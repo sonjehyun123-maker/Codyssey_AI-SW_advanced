@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Datasets and Large Files
+*.csv
+*.jsonl
+*.parquet
+*.pth
+*.pt
+*.pkl
+data/
+!data/.gitkeep
+videos/
+!videos/.gitkeep
+test_images/
+!test_images/.gitkeep
