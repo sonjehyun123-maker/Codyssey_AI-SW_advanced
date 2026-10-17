@@ -33,3 +33,7 @@ videos/
 !videos/.gitkeep
 test_images/
 !test_images/.gitkeep
+
+# Evaluation outputs
+output/
+
