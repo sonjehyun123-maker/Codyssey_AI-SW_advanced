@@ -8,9 +8,35 @@ A3-1: 휴대폰으로 찍은 종이를 똑바르게 펴서 스캔하게 만들�
 - Adaptive Thresholding for B&W scanned output
 """
 
+import os
 from typing import Dict, Optional, Tuple
 import cv2
 import numpy as np
+
+
+def imread_unicode(path: str) -> Optional[np.ndarray]:
+    """한글 및 유니코드 경로를 지원하는 안전한 이미지 로더."""
+    try:
+        data = np.fromfile(str(path), dtype=np.uint8)
+        if len(data) == 0:
+            return None
+        return cv2.imdecode(data, cv2.IMREAD_COLOR)
+    except Exception:
+        return None
+
+
+def imwrite_unicode(path: str, img: np.ndarray) -> bool:
+    """한글 및 유니코드 경로를 지원하는 안전한 이미지 저장기."""
+    try:
+        ext = os.path.splitext(str(path))[1]
+        ret, buf = cv2.imencode(ext, img)
+        if ret:
+            with open(str(path), "wb") as f:
+                buf.tofile(f)
+            return True
+        return False
+    except Exception:
+        return False
 
 
 def order_points(pts: np.ndarray) -> np.ndarray:

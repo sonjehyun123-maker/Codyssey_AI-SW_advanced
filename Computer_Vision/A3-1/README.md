@@ -24,14 +24,14 @@
 A3-1/
 ├── src/
 │   ├── scanner.py              # 전처리, Canny 엣지, Contour, getPerspectiveTransform 스캔 엔진
-│   └── gui.py                  # 트랙바 조절 및 4분할 격자 시각화 UI, 웹캠 모드
+│   ├── gui.py                  # 트랙바 조절 및 4분할 격자 시각화 UI, 웹캠 모드
+│   ├── generate_test_samples.py # 20장 벤치마크 이미지 합성 생성 스크립트
+│   └── evaluate_scanner.py     # 20장 정량 평가 및 성공률 측정 러너
 ├── test_images/                # 4가지 조건별 20장 벤치마크 테스트셋
 │   ├── cond1_simple_1~5.jpg    # 단순 배경 + 정면 (5장)
 │   ├── cond2_shadow_1~5.jpg    # 그림자 및 조명 얼룩 (5장)
 │   ├── cond3_tilted_1~5.jpg    # 45도 이상 기울어진 사다리꼴 왜곡 (5장)
 │   └── cond4_complex_1~5.jpg   # 복잡한 배경 및 방해 객체 (5장)
-├── generate_test_samples.py    # 20장 벤치마크 이미지 합성 생성 스크립트
-├── evaluate_scanner.py         # 20장 정량 평가 및 성공률 측정 러너
 ├── A3-1학습용.md               # 쉬운 설명 & 어려운 설명 심층 개념서
 ├── REPORT.md                   # 20장 정량 평가 성공률 표 및 실패 원인 분석 보고서
 └── README.md                   # 프로젝트 개요 및 실행 가이드
@@ -67,7 +67,18 @@ A3-1/
 
 ## 4. 실행 방법
 
-### 1) 대화형 트랙바 GUI 실행 (이미지 모드)
+### 1) 20장 정량 평가 벤치마크 실행
+20장의 테스트 데이터셋에 대해 자동 스캔을 수행하고 성공률 표를 출력합니다.
+```bash
+python src/evaluate_scanner.py
+```
+
+### 2) 벤치마크 테스트셋 재생성 (필요시)
+```bash
+python src/generate_test_samples.py
+```
+
+### 3) 대화형 트랙바 GUI 실행 (이미지 모드)
 슬라이더를 실시간으로 조절하며 블러 크기, Canny 임계값, 적응형 이진화 블록 크기를 튜닝할 수 있습니다.
 ```bash
 python src/gui.py --image test_images/cond1_simple_1.jpg
@@ -77,16 +88,10 @@ python src/gui.py --image test_images/cond1_simple_1.jpg
   - `R`: 트랙바 파라미터 초기화
   - `Q` 또는 `ESC`: 프로그램 종료
 
-### 2) 실시간 웹캠 스캐너 실행
+### 4) 실시간 웹캠 스캐너 실행
 웹캠에 문서를 비추면 초록색 윤곽선이 자동으로 추적되며, `S` 키 입력 시 즉시 캡처하여 스캔본을 저장합니다.
 ```bash
 python src/gui.py --webcam
-```
-
-### 3) 20장 정량 평가 벤치마크 실행
-20장의 테스트 데이터셋에 대해 자동 스캔을 수행하고 성공률 표를 출력합니다.
-```bash
-python evaluate_scanner.py
 ```
 
 ---

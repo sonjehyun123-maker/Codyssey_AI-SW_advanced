@@ -16,9 +16,9 @@ import numpy as np
 
 # 같은 디렉터리 내 scanner 모듈 임포트
 try:
-    from .scanner import DocumentScanner, order_points, four_point_transform
+    from .scanner import DocumentScanner, order_points, four_point_transform, imread_unicode, imwrite_unicode
 except ImportError:
-    from scanner import DocumentScanner, order_points, four_point_transform
+    from scanner import DocumentScanner, order_points, four_point_transform, imread_unicode, imwrite_unicode
 
 
 class InteractiveScannerGUI:
@@ -197,7 +197,7 @@ class InteractiveScannerGUI:
 
                     save_count += 1
                     save_path = os.path.join(self.output_dir, f"scan_result_{save_count}.png")
-                    cv2.imwrite(save_path, full_res["scanned"])
+                    imwrite_unicode(save_path, full_res["scanned"])
                     print(f"[저장 완료] 스캔 결과가 저장되었습니다: {save_path}")
             elif key == ord("r"):  # 'r' to reset
                 cv2.setTrackbarPos("Blur Kernel (Odd)", self.WINDOW_NAME, 2)
@@ -243,7 +243,7 @@ def run_webcam_mode(camera_id: int = 0, output_dir: str = "output"):
         elif key == ord("s"):
             save_idx += 1
             path_warp = os.path.join(output_dir, f"webcam_scanned_{save_idx}.png")
-            cv2.imwrite(path_warp, results["scanned"])
+            imwrite_unicode(path_warp, results["scanned"])
             print(f"[저장 완료] 웹캠 스캔본 저장: {path_warp}")
 
     cap.release()
@@ -264,7 +264,7 @@ def main():
         if not os.path.exists(args.image):
             print(f"[오류] 이미지 파일을 찾을 수 없습니다: {args.image}")
             sys.exit(1)
-        image = cv2.imread(args.image)
+        image = imread_unicode(args.image)
         if image is None:
             print(f"[오류] 유효한 이미지 형식이 아닙니다: {args.image}")
             sys.exit(1)
