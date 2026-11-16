@@ -43,6 +43,24 @@ class DataAnalyzer:
             raise ValueError("데이터가 로드되지 않았습니다. load_data()를 먼저 호출하세요.")
 
         if self.images is not None and "image_index" in self.df.columns:
+            if self.images.ndim != 4:
+                raise ValueError(
+                    f"이미지 배열은 (N, H, W, C) 4차원이어야 합니다. 현재 차원: {self.images.ndim}"
+                )
+
+            image_index = self.df["image_index"]
+            if image_index.isna().any():
+                raise ValueError(f"image_index에 결측치가 {int(image_index.isna().sum())}건 있습니다.")
+            if not np.issubdtype(image_index.dtype, np.integer):
+                raise ValueError(f"image_index는 정수형이어야 합니다. 현재 dtype: {image_index.dtype}")
+
+            n_images = self.images.shape[0]
+            if image_index.min() < 0 or image_index.max() >= n_images:
+                raise ValueError(
+                    f"image_index 범위를 벗어났습니다: [{image_index.min()}, {image_index.max()}], "
+                    f"허용 범위는 [0, {n_images - 1}]입니다."
+                )
+
             img_mean_all = np.mean(self.images, axis=(1, 2, 3))
             img_std_all = np.std(self.images, axis=(1, 2, 3))
 
@@ -73,6 +91,12 @@ class DataAnalyzer:
         """범주형은 최빈값, 수치형은 그룹별 통계치로 결측치를 대치한다."""
         if self.df is None:
             raise ValueError("데이터가 로드되지 않았습니다. load_data()를 먼저 호출하세요.")
+
+        valid_strategies = {"group_median", "group_mean", "mode"}
+        if strategy not in valid_strategies:
+            raise ValueError(
+                f"지원하지 않는 strategy입니다: {strategy!r}. 사용 가능: {sorted(valid_strategies)}"
+            )
 
         if "customer_gender" in self.df.columns and self.df["customer_gender"].isna().sum() > 0:
             gender_mode = self.df["customer_gender"].mode()[0]
@@ -112,6 +136,9 @@ class DataAnalyzer:
         """IQR 기준으로 이상치를 탐지하고 선택적으로 경계값에 클리핑한다."""
         if self.df is None or column not in self.df.columns:
             raise ValueError(f"데이터프레임에 {column} 컬럼이 존재하지 않습니다.")
+
+        if action not in {"flag", "clip"}:
+            raise ValueError(f"지원하지 않는 action입니다: {action!r}. 사용 가능: ['clip', 'flag']")
 
         series = self.df[column].dropna()
         q1 = float(np.percentile(series, 25))
@@ -165,7 +192,19 @@ class DataAnalyzer:
         if self.df is None:
             raise ValueError("데이터가 로드되지 않았습니다. load_data()를 먼저 호출하세요.")
 
+        required_cols = [customer_id_col, order_date_col, amount_col]
+        missing_cols = [col for col in required_cols if col not in self.df.columns]
+        if missing_cols:
+            raise ValueError(f"RFM 계산에 필요한 컬럼이 없습니다: {missing_cols}")
+
         temp_df = self.df.copy()
+        if temp_df[order_date_col].isna().any():
+            raise ValueError(
+                f"{order_date_col}에 결측치가 {int(temp_df[order_date_col].isna().sum())}건 있습니다."
+            )
+        if temp_df[amount_col].isna().any():
+            raise ValueError(f"{amount_col}에 결측치가 {int(temp_df[amount_col].isna().sum())}건 있습니다.")
+
         if not np.issubdtype(temp_df[order_date_col].dtype, np.datetime64):
             temp_df[order_date_col] = pd.to_datetime(temp_df[order_date_col])
 

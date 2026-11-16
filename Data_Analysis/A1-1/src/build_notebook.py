@@ -147,7 +147,7 @@ def collect_metrics() -> dict:
         "corr_price": float(df["amount_clipped"].corr(df["unit_price"])),
         "corr_qty": float(df["amount_clipped"].corr(df["quantity"])),
         "corr_age": float(df["amount_clipped"].corr(df["customer_age"])),
-        "corr_img": float(df["amount_clipped"].corr(df["img_pixel_mean"])),
+        "corr_img": float(df["img_pixel_mean"].corr(df["unit_price"])),
         "cat1": str(top2.index[0]),
         "cat1_n": int(top2.iloc[0]),
         "cat2": str(top2.index[1]),
