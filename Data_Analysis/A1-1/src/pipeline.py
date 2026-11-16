@@ -186,9 +186,13 @@ class DataAnalyzer:
         reference_date: Optional[str] = None,
         customer_id_col: str = "customer_id",
         order_date_col: str = "order_date",
-        amount_col: str = "amount"
+        amount_col: str = "amount",
+        allow_negative_amount: bool = False
     ) -> pd.DataFrame:
-        """고객별 Recency·Frequency·Monetary를 계산해 5개 세그먼트로 분류한다."""
+        """고객별 Recency·Frequency·Monetary를 계산해 5개 세그먼트로 분류한다.
+
+        Frequency는 주문 건수, Monetary는 금액 합계다(환불을 허용하면 순액).
+        """
         if self.df is None:
             raise ValueError("데이터가 로드되지 않았습니다. load_data()를 먼저 호출하세요.")
 
@@ -204,6 +208,18 @@ class DataAnalyzer:
             )
         if temp_df[amount_col].isna().any():
             raise ValueError(f"{amount_col}에 결측치가 {int(temp_df[amount_col].isna().sum())}건 있습니다.")
+
+        amount_values = pd.to_numeric(temp_df[amount_col], errors="coerce")
+        non_finite = int((~np.isfinite(amount_values)).sum())
+        if non_finite:
+            raise ValueError(f"{amount_col}에 무한대/비수치 값이 {non_finite}건 있습니다.")
+
+        negative_count = int((amount_values < 0).sum())
+        if negative_count and not allow_negative_amount:
+            raise ValueError(
+                f"{amount_col}에 음수 {negative_count}건이 있습니다(환불로 간주). "
+                "순매출 기준으로 계산하려면 allow_negative_amount=True를 사용하세요."
+            )
 
         if not np.issubdtype(temp_df[order_date_col].dtype, np.datetime64):
             temp_df[order_date_col] = pd.to_datetime(temp_df[order_date_col])
