@@ -1,23 +1,4 @@
-"""A1-1 분석 리포트 노트북 빌더 (계산 → 마크다운 주입 → 실제 실행 → 저장)
-
-이 스크립트가 하는 일
-1. `DataAnalyzer` 파이프라인을 **실제로 실행**해 모든 지표를 산출합니다.
-2. 산출된 값을 f-string으로 해석 마크다운에 **주입**합니다(수치 하드코딩 금지).
-3. `nbclient`로 노트북을 **실제 실행**한 뒤, 실행 결과(차트/표/로그)가 포함된 상태로 저장합니다.
-
-설계 의도
-- 이전 버전은 노트북 "본문"만 만들고 실행하지 않아, 마크다운의 수치가 실제 출력과
-  어긋날 수 있었습니다(수기 작성 문장). 이제 문장 속 모든 수치는 실행 결과에서 옵니다.
-- 데이터를 다시 생성해 분포가 바뀌어도 이 스크립트를 다시 돌리면 해석과 수치가 함께 갱신됩니다.
-
-한글 폰트
-- Windows(`Malgun Gothic`), macOS(`AppleGothic`), Linux(`NanumGothic`/`Noto Sans CJK`) 등
-  OS에 설치된 후보 폰트 중 **실제로 사용 가능한 첫 폰트를 자동 선택**합니다.
-  후보가 하나도 없으면 `DejaVu Sans`로 폴백하고 경고 셀을 출력합니다(차트는 생성됨).
-
-실행 예시
-    python src/build_notebook.py
-"""
+"""A1-1 분석 리포트 노트북 빌더: 지표 산출 → 마크다운 주입 → 실제 실행 → 저장."""
 
 import json
 import os
@@ -38,7 +19,6 @@ if SRC_DIR not in sys.path:
 
 from pipeline import DataAnalyzer  # noqa: E402
 
-# OS별 한글 폰트 후보 (앞에서부터 우선순위)
 FONT_CANDIDATES = [
     "Malgun Gothic",          # Windows
     "AppleGothic",            # macOS (구버전)
@@ -59,16 +39,11 @@ SEGMENT_LABEL = {
 }
 
 
-# ---------------------------------------------------------------------------
-# 1. 지표 산출 (문장에 들어갈 모든 숫자의 단일 출처)
-# ---------------------------------------------------------------------------
 def collect_metrics() -> dict:
     """파이프라인을 실제로 실행해 리포트에 필요한 지표를 모두 계산합니다."""
     analyzer = DataAnalyzer(random_state=42)
     df, images = analyzer.load_data(CSV_PATH, IMG_PATH)
 
-    # 원본 스키마 크기는 피처 엔지니어링 '전에' 측정해야 합니다.
-    # (파생 컬럼이 추가된 뒤 shape를 재면 컬럼 수가 12 → 21로 부푼다)
     n_rows, n_cols_raw = df.shape
 
     null_age_raw = int(df["customer_age"].isna().sum())
@@ -134,7 +109,6 @@ def collect_metrics() -> dict:
     at_risk = segments.get("At_Risk")
     churned = segments.get("Churned")
 
-    # 시나리오 계산 (가정과 산식을 문장에 함께 표기하기 위해 여기서 계산)
     vip_uplift_pct = (vip["share_rev"] * 1.0 / vip["freq"]) if vip else 0.0  # VIP 빈도 +1회 시 매출 증가율
     at_risk_winback_20 = (at_risk["tot"] * 0.20 / 1e4) if at_risk else 0.0   # 재진입 20% 가정 시 방어 규모(만원)
 
@@ -198,12 +172,8 @@ def collect_metrics() -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# 2. 셀 구성 (마크다운 문장에 지표 주입)
-# ---------------------------------------------------------------------------
 def build_cells(m: dict) -> list:
     seg = m["segments"]
-    # collect_metrics()가 필수 세그먼트 존재를 보장하지만, 여기서도 명시적으로 확인합니다.
     missing = [name for name in SEGMENT_ORDER if name not in seg]
     if missing:
         raise ValueError(f"리포트 구성에 필요한 세그먼트가 없습니다: {missing}")
@@ -239,7 +209,6 @@ def build_cells(m: dict) -> list:
 
     cells = []
 
-    # 1) 표지
     cells.append(nbf.v4.new_markdown_cell(f"""# A1-1 이커머스 멀티모달 EDA 및 RFM 고객 세분화 분석 리포트
 
 ## 1. 프로젝트 개요
@@ -259,7 +228,6 @@ def build_cells(m: dict) -> list:
 > 본 노트북의 해석 문장에 등장하는 모든 수치는 `src/build_notebook.py`가 파이프라인을 실제 실행해
 > 산출한 값이 자동 주입된 것입니다(수기 입력 아님)."""))
 
-    # 2) 환경 설정
     cells.append(nbf.v4.new_code_cell("""import os
 import sys
 import numpy as np
@@ -269,7 +237,6 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import seaborn as sns
 
-# OS에 설치된 한글 폰트를 자동 선택 (Windows: Malgun Gothic, macOS: AppleGothic, Linux: NanumGothic 등)
 FONT_CANDIDATES = [
     "Malgun Gothic", "AppleGothic", "Apple SD Gothic Neo",
     "NanumGothic", "NanumBarunGothic", "Noto Sans CJK KR", "Noto Sans KR",
@@ -289,7 +256,6 @@ print(f"시각화 한글 폰트: {font_name}")
 if font_name == "DejaVu Sans":
     print("경고: 한글 폰트를 찾지 못했습니다. 차트의 한글이 네모로 보이면 폰트를 설치하세요.")"""))
 
-    # 3) 데이터 로드
     cells.append(nbf.v4.new_markdown_cell("""## 2. 데이터 로드 및 기본 탐색
 `DataAnalyzer.load_data()`로 CSV와 이미지 배열을 함께 로드하고, `head()`·`info()`·`describe()`로
 구조와 결측치 현황을 확인합니다."""))
@@ -305,7 +271,6 @@ df.head(5)"""))
     cells.append(nbf.v4.new_code_cell("""df.info()"""))
     cells.append(nbf.v4.new_code_cell("""df.describe().T"""))
 
-    # 4) 기본 구조 해석 (주입)
     cells.append(nbf.v4.new_markdown_cell(f"""### 기본 구조 해석
 - **규모**: 원본 {m['n_rows']:,}행 × {m['n_cols_raw']}컬럼, 고객 {m['n_customers']}명, 상품 {m['n_products']}종
   (멀티모달·텍스트 피처를 추출하면 {m['n_cols_total']}컬럼이 됩니다).
@@ -318,7 +283,6 @@ df.head(5)"""))
   대푯값으로 중앙값을 함께 보고하고 IQR 기반 경계 처리가 필요합니다. 나이 결측치는 카테고리별 구매 성향이
   다르므로 그룹별 중앙값 대치가 적절합니다."""))
 
-    # 5) 멀티모달 피처
     cells.append(nbf.v4.new_markdown_cell("""## 3. 멀티모달 피처 엔지니어링
 - **이미지**: `for` 루프 없이 NumPy 축 연산으로 이미지별 픽셀 평균/표준편차, R·G·B 채널 평균을 계산합니다.
 - **텍스트**: 상품명의 문자 수(`product_name_len`)와 어절 수(`product_word_count`)를 파생 변수로 만듭니다."""))
@@ -333,7 +297,6 @@ df_feat[["product_name", "product_name_len", "product_word_count",
   1:1로 매핑됩니다. 따라서 `img_pixel_*` 피처는 **이미지 내용 정보라기보다 카테고리의 대리변수**에 가깝습니다.
   실제 서비스라면 상품 이미지에서 CNN 임베딩을 추출해 넣어야 이 피처가 독립적인 정보를 갖습니다."""))
 
-    # 6) 결측치 / 이상치
     cells.append(nbf.v4.new_markdown_cell("""## 4. 결측치 및 이상치 처리
 - **결측치**: 성별은 최빈값, 나이는 `category`별 중앙값(`group_median`)으로 대치합니다.
 - **이상치**: 결제 금액에 IQR(Tukey's fence) 방식을 직접 적용하고, `np.clip`으로 경계값에 눌러 담습니다(행 삭제 없음)."""))
@@ -349,7 +312,6 @@ print(f"Q1 = {outlier_stats['q1']:,.0f}원, Q3 = {outlier_stats['q3']:,.0f}원, 
 print(f"정상 범위: [{outlier_stats['lower_bound']:,.0f}, {outlier_stats['upper_bound']:,.0f}]원")
 print(f"탐지된 이상치: {outlier_stats['outlier_count']}건 ({outlier_stats['outlier_ratio']*100:.2f}%)")
 
-# 이상치 상위 카테고리 확인 (어떤 상품군이 경계를 넘는지)
 print("\\n이상치 카테고리 분포:")
 print(df.loc[is_outlier, "category"].value_counts().to_string())"""))
 
@@ -366,7 +328,6 @@ print(df.loc[is_outlier, "category"].value_counts().to_string())"""))
   분포를 안정화하는 대신 매출 규모는 축소되므로, 매출 집계에는 원본 `amount`를, 분포·상관 분석에는
   `amount_clipped`를 사용합니다(본 리포트의 RFM Monetary는 원본 `amount` 기준)."""))
 
-    # 7) 통계
     cells.append(nbf.v4.new_markdown_cell("""## 5. 정밀 통계 분석
 주요 수치형 변수의 평균·중앙값·표준편차·사분위수를 계산하고, 피어슨 상관계수로 변수 간 관계를 확인합니다."""))
 
@@ -403,7 +364,6 @@ corr_df.round(4)"""))
   두 상관계수는 **구조적으로 양(+)이 나올 수밖에 없는 값**입니다. 이를 "발견"으로 제시하기보다
   "객단가를 올리는 레버는 단가와 수량 두 축"이라는 **정의 수준의 결론**으로 다루는 것이 정확합니다.""" ))
 
-    # 8) 시각화
     cells.append(nbf.v4.new_markdown_cell("""## 6. 탐색적 데이터 분석 6종 시각화
 모든 차트는 제목과 x·y축 레이블을 명시합니다.
 1. 히스토그램 — 결제 금액/연령 분포
@@ -413,8 +373,7 @@ corr_df.round(4)"""))
 5. 산점도 — 단가 vs 결제 금액
 6. 라인차트 — 월별 매출 추이"""))
 
-    cells.append(nbf.v4.new_code_cell("""# 1. 히스토그램
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    cells.append(nbf.v4.new_code_cell("""fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
 sns.histplot(df["amount_clipped"], bins=30, kde=True, ax=axes[0], color="#2b5c8f")
 axes[0].set_title("결제 금액 분포 (IQR 클리핑 후)", fontsize=13, fontweight="bold")
@@ -429,8 +388,7 @@ axes[1].set_ylabel("주문 건수")
 plt.tight_layout()
 plt.show()"""))
 
-    cells.append(nbf.v4.new_code_cell("""# 2. 박스플롯: 이상치 처리 전후
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    cells.append(nbf.v4.new_code_cell("""fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
 sns.boxplot(y=df["amount"], ax=axes[0], color="#d95f02")
 axes[0].set_title("처리 전 결제 금액 (Raw)", fontsize=13, fontweight="bold")
@@ -443,8 +401,7 @@ axes[1].set_ylabel("결제 금액 (원)")
 plt.tight_layout()
 plt.show()"""))
 
-    cells.append(nbf.v4.new_code_cell("""# 3. 막대그래프: 카테고리별 주문 빈도
-cat_order = df["category"].value_counts()
+    cells.append(nbf.v4.new_code_cell("""cat_order = df["category"].value_counts()
 plt.figure(figsize=(9, 4.5))
 sns.barplot(x=cat_order.index, y=cat_order.values, hue=cat_order.index, palette="Blues_r", legend=False)
 plt.title("상품 카테고리별 주문 빈도", fontsize=13, fontweight="bold")
@@ -455,8 +412,7 @@ for i, v in enumerate(cat_order.values):
 plt.tight_layout()
 plt.show()"""))
 
-    cells.append(nbf.v4.new_code_cell("""# 4. 히트맵: 상관행렬
-plt.figure(figsize=(9, 7))
+    cells.append(nbf.v4.new_code_cell("""plt.figure(figsize=(9, 7))
 sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="coolwarm", vmin=-1, vmax=1, linewidths=0.5)
 plt.title("주요 수치형·멀티모달 변수 상관행렬", fontsize=13, fontweight="bold")
 plt.xlabel("피처")
@@ -464,8 +420,7 @@ plt.ylabel("피처")
 plt.tight_layout()
 plt.show()"""))
 
-    cells.append(nbf.v4.new_code_cell("""# 5. 산점도: 단가 vs 결제 금액
-plt.figure(figsize=(9, 5))
+    cells.append(nbf.v4.new_code_cell("""plt.figure(figsize=(9, 5))
 sns.scatterplot(data=df, x="unit_price", y="amount_clipped", hue="category", alpha=0.7, s=40, palette="tab10")
 plt.title("상품 단가 vs 결제 금액 (카테고리별)", fontsize=13, fontweight="bold")
 plt.xlabel("상품 단가 (원)")
@@ -474,8 +429,7 @@ plt.legend(title="카테고리", bbox_to_anchor=(1.05, 1), loc="upper left")
 plt.tight_layout()
 plt.show()"""))
 
-    cells.append(nbf.v4.new_code_cell("""# 6. 라인차트: 월별 매출 추이 (원본 amount 기준)
-df["order_month"] = df["order_date"].dt.to_period("M").astype(str)
+    cells.append(nbf.v4.new_code_cell("""df["order_month"] = df["order_date"].dt.to_period("M").astype(str)
 monthly_sales = df.groupby("order_month")["amount"].sum() / 1e6
 
 plt.figure(figsize=(10, 4.5))
@@ -500,7 +454,6 @@ plt.show()"""))
   실데이터라면 계절성(프로모션·명절) 분석이 필요합니다.
 - **산점도**: 단가와 결제 금액이 계단형 띠를 이루는 것은 수량이 1~5(드물게 10)의 이산값이기 때문입니다.""" ))
 
-    # 9) RFM
     cells.append(nbf.v4.new_markdown_cell("""## 7. RFM 기반 고객 세분화
 - 기준일: 데이터 최종 거래일 **+1일**
 - R(최근성) = 기준일 − 마지막 구매일 (작을수록 우수), F(빈도) = 주문 건수, M(금액) = 누적 결제액
@@ -516,8 +469,7 @@ plt.show()"""))
     cells.append(nbf.v4.new_code_cell("""rfm_df = analyzer.calculate_rfm()
 rfm_df.head(10)"""))
 
-    cells.append(nbf.v4.new_code_cell("""# 점수 분포 확인 (분포 기반 점수화 검증: 각 점수군이 25%가 아닐 수 있음)
-score_dist = pd.DataFrame({
+    cells.append(nbf.v4.new_code_cell("""score_dist = pd.DataFrame({
     "R_score": rfm_df["R_score"].value_counts().sort_index(),
     "F_score": rfm_df["F_score"].value_counts().sort_index(),
     "M_score": rfm_df["M_score"].value_counts().sort_index(),
@@ -535,8 +487,7 @@ segment_summary["customer_share"] = segment_summary["customer_count"] / segment_
 segment_summary["monetary_share"] = segment_summary["total_monetary"] / segment_summary["total_monetary"].sum() * 100
 segment_summary.sort_values("total_monetary", ascending=False).round(1)"""))
 
-    cells.append(nbf.v4.new_code_cell("""# 세그먼트별 고객 수 · 매출 기여도
-order = ["VIP", "Loyal", "At_Risk", "New", "Churned"]
+    cells.append(nbf.v4.new_code_cell("""order = ["VIP", "Loyal", "At_Risk", "New", "Churned"]
 plot_df = segment_summary.set_index("segment").loc[order].reset_index()
 
 fig, axes = plt.subplots(1, 2, figsize=(14, 5))
@@ -578,7 +529,6 @@ plt.show()"""))
 - **{SEGMENT_LABEL['Churned']}**: {churned['n']}명({churned['share_cust']:.1f}%)이 매출의 {churned['share_rev']:.1f}%를
   차지하며 평균 Recency {churned['rec']:.1f}일로 가장 오래 방문하지 않았습니다."""))
 
-    # 10) 마무리
     cells.append(nbf.v4.new_markdown_cell(f"""## 8. 정리와 한계
 
 ### 세그먼트별 매출 기여 요약
@@ -599,9 +549,6 @@ plt.show()"""))
     return cells
 
 
-# ---------------------------------------------------------------------------
-# 3. 노트북 실행
-# ---------------------------------------------------------------------------
 def _resolve_kernel_name() -> str:
     """현재 파이썬 환경에서 사용 가능한 ipykernel 커널 이름을 반환합니다."""
     from jupyter_client.kernelspec import KernelSpecManager
@@ -609,7 +556,6 @@ def _resolve_kernel_name() -> str:
     if "python3" in KernelSpecManager().find_kernel_specs():
         return "python3"
 
-    # 커널 스펙이 없는 환경(예: 새 venv)에서는 현재 인터프리터로 임시 스펙을 등록
     tmp_dir = tempfile.mkdtemp(prefix="a1-1-kernel-")
     spec_dir = os.path.join(tmp_dir, "kernels", "python3")
     os.makedirs(spec_dir, exist_ok=True)
@@ -694,7 +640,6 @@ def _readme_metrics(m: dict) -> dict:
         "corr": {"price": round(m["corr_price"], 3), "qty": round(m["corr_qty"], 3), "age": round(m["corr_age"], 3)},
         "categories": {m["cat1"]: m["cat1_n"], m["cat2"]: m["cat2_n"]},
         "scenarios": {
-            # 시나리오는 문서에 표시되는 반올림 값끼리 계산해, 독자가 산식으로 검산할 수 있게 합니다.
             "vip_uplift_pct": round(
                 round(m["segments"]["VIP"]["share_rev"], 1) / round(m["segments"]["VIP"]["freq"], 1), 2
             ) if "VIP" in m["segments"] else 0.0,
