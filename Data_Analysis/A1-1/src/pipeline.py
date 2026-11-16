@@ -4,6 +4,7 @@ DataAnalyzer Class:
 - load_data(): 거래 CSV 및 이미지 NumPy 배열 로드
 - extract_multimodal_features(): NumPy 벡터 연산 기반 이미지 특성(평균, 표준편차) 및 텍스트 피처 추출
 - handle_missing_values(): 그룹별(GroupBy) 통계 기반 결측치 대치
+- handle_missing(): 요구서 표기와의 호환용 alias (handle_missing_values로 위임)
 - detect_outliers(): IQR 기반 이상치 탐지 로직 직접 구현
 - calculate_rfm(): 최종 거래일 기준 고객별 RFM 스코어 계산 및 세그먼트 분류
 """
@@ -142,6 +143,17 @@ class DataAnalyzer:
 
         return self.df
 
+    def handle_missing(self, *args, **kwargs) -> pd.DataFrame:
+        """`handle_missing_values()`의 호환 alias.
+
+        요구서·평가 기준에는 `handle_missing()`으로 표기되어 있어, 기존 이름을
+        유지하면서도 같은 진입점을 제공합니다. 동작과 반환값은 완전히 동일합니다.
+
+        Returns:
+            pd.DataFrame: 결측치가 대치된 데이터프레임
+        """
+        return self.handle_missing_values(*args, **kwargs)
+
     def detect_outliers(
         self,
         column: str = "amount",
@@ -195,6 +207,37 @@ class DataAnalyzer:
 
         return is_outlier, stats
 
+    @staticmethod
+    def _percentile_score(
+        series: pd.Series,
+        ascending: bool = True,
+        q: int = 4
+    ) -> pd.Series:
+        """평균 순위(average rank) 기반 분위 점수를 1~q 범위로 부여합니다.
+
+        `pd.qcut` + `rank(method='first')` 조합은 동점자를 임의 순서로 잘라
+        각 점수군을 무조건 25%씩 강제 분할합니다. 그 방식은 실제 빈도 분포가
+        균등하지 않아도 "상위 25%"라는 라벨을 붙이게 되어 해석이 왜곡됩니다
+        (예: 1회 구매 고객이 F_score=2를 받는 경우 발생).
+
+        본 구현은 동점자에게 동일한 평균 백분위를 부여한 뒤 분위 경계로
+        점수를 매기므로, 동점자는 반드시 같은 점수를 받고 점수군 크기는
+        데이터 분포를 그대로 반영합니다(25%가 아닐 수 있음).
+
+        Args:
+            series: 점수를 매길 수치형 Series
+            ascending: True면 값이 클수록 높은 점수, False면 작을수록 높은 점수
+            q: 점수 개수(기본 4 → 1~4점)
+
+        Returns:
+            pd.Series: 1~q 정수 점수
+        """
+        # rank(pct=True): 최솟값 → 1/n, 최댓값 → 1.0. 동점자는 평균 순위를 공유
+        percentile = series.rank(method="average", pct=True, ascending=ascending)
+        # 0.25 경계는 1점, 1.0은 q점으로 매핑되도록 올림 적용 후 클리핑
+        score = np.ceil(percentile * q).clip(1, q)
+        return score.astype(int)
+
     def calculate_rfm(
         self,
         reference_date: Optional[str] = None,
@@ -207,6 +250,8 @@ class DataAnalyzer:
         - Recency: 분석 기준일(데이터의 최종 거래일 + 1일)로부터 마지막 구매일까지의 일수 (작을수록 좋음)
         - Frequency: 총 주문 횟수 (클수록 좋음)
         - Monetary: 총 구매 금액 (클수록 좋음)
+        - 점수화: 평균 순위 백분위 기반 1~4점 (`_percentile_score`). 동점자는 동일 점수를 받으며
+          점수군 크기는 데이터 분포를 따릅니다(강제 25% 분할 아님).
 
         Args:
             reference_date: 기준일자 문자열 (YYYY-MM-DD), None일 경우 데이터 최종 거래일 + 1일
@@ -237,23 +282,20 @@ class DataAnalyzer:
             monetary=(amount_col, "sum")
         ).reset_index()
 
-        # 분위수(Quantile) 기반 R, F, M 1~4 점수 부여 (4점이 최우수)
-        # Recency는 일수가 작을수록 높은 점수(4점)
-        rfm["R_score"] = pd.qcut(rfm["recency"], q=4, labels=[4, 3, 2, 1]).astype(int)
-
-        # Frequency & Monetary는 값이 클수록 높은 점수(4점)
-        # 중복값이 많을 수 있으므로 rank(method='first') 적용 후 qcut
-        rfm["F_score"] = pd.qcut(
-            rfm["frequency"].rank(method="first"), q=4, labels=[1, 2, 3, 4]
-        ).astype(int)
-        rfm["M_score"] = pd.qcut(
-            rfm["monetary"].rank(method="first"), q=4, labels=[1, 2, 3, 4]
-        ).astype(int)
+        # 평균 순위 기반 분위수 점수 1~4점 부여 (4점이 최우수)
+        # Recency는 일수가 작을수록 높은 점수 → ascending=False로 역순 매핑
+        rfm["R_score"] = self._percentile_score(rfm["recency"], ascending=False)
+        # Frequency & Monetary는 값이 클수록 높은 점수
+        rfm["F_score"] = self._percentile_score(rfm["frequency"], ascending=True)
+        rfm["M_score"] = self._percentile_score(rfm["monetary"], ascending=True)
 
         # 종합 RFM 스코어
         rfm["RFM_Score"] = rfm["R_score"] * 100 + rfm["F_score"] * 10 + rfm["M_score"]
 
-        # 4대 핵심 고객 세그먼트 분류 로직
+        # 5대 핵심 고객 세그먼트 분류 로직
+        # 주의: 규칙은 위에서부터 먼저 만족하는 조건에서 확정되므로 순서가 곧 우선순위입니다.
+        # 특히 `New`는 "최근성 높음 + 최초 1회 구매"이므로, 구매 이력이 있는 고객을
+        # 먼저 흡수하는 `Loyal`보다 앞에 두어야 도달 가능한 세그먼트가 됩니다.
         def assign_segment(row: pd.Series) -> str:
             r = row["R_score"]
             f = row["F_score"]
@@ -261,10 +303,11 @@ class DataAnalyzer:
 
             if r >= 3 and f >= 3 and m >= 3:
                 return "VIP"
+            elif r >= 3 and row["frequency"] == 1:
+                # 실제 주문 1건 = 최초 구매 고객 (F 점수가 아닌 원시 빈도로 판정)
+                return "New"
             elif r >= 3 and (f >= 2 or m >= 2):
                 return "Loyal"
-            elif r >= 3 and f == 1:
-                return "New"
             elif r <= 2 and (f >= 3 or m >= 3):
                 return "At_Risk"
             else:
