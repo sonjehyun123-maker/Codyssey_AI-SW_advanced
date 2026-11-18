@@ -229,6 +229,8 @@ class DataAnalyzer:
         else:
             ref_dt = pd.to_datetime(reference_date)
 
+        temp_df = temp_df[temp_df[order_date_col] < ref_dt]
+
         rfm = temp_df.groupby(customer_id_col).agg(
             recency=(order_date_col, lambda dates: (ref_dt - dates.max()).days),
             frequency=(order_date_col, "count"),
